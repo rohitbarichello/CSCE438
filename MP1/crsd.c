@@ -3,15 +3,12 @@
 // socket file descriptor stored globally for graceful closing of socket
 int sockfd;
 
-enum command_type { CREATE,
-                    JOIN,
-                    DELETE };
-
 class Chatroom {
    private:
     std::string name;
     int port, num_members, room_sockfd;
     sockaddr_in room_addr;
+    std::vector<DATATYPE> members;
 
    public:
     Chatroom(std::string _name, int _port) {
@@ -40,6 +37,15 @@ class Chatroom {
 
     int get_num_members() {
         return num_members;
+    }
+
+    void receive_message() {
+        char buffer[MAX_DATA];
+        recv(sockfd, buffer, MAX_DATA, 0);
+
+        for(int i = 0; i < members.length(); i++) {
+            send(room_sockfd, buffer, MAX_DATA, 0);
+        }
     }
 };
 
@@ -159,10 +165,8 @@ int main(int argc, char** argv) {
     // grab port number arg
     int PORT_NUMBER = atoi(argv[1]);
 
-    // consider adding an error handler for each step along the way to make code more robust
     // create socket
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    // printf("Socket with file descriptor %i assigned to server \n", sockfd);
 
     // create a sockaddr_in struct to act as the second arg for bind(). we use sockaddr_in because we
     // are using IP
@@ -173,7 +177,6 @@ int main(int argc, char** argv) {
 
     // bind our socket to port
     bind(sockfd, (struct sockaddr*)&addr, sizeof(addr));
-    // printf("Socket with file descriptor %i bound to port %i \n", sockfd, PORT_NUMBER);
 
     // listen for incoming connections, allowing a max of 10 in the queue before refusing additional requests
     listen(sockfd, 10);
@@ -202,7 +205,7 @@ int main(int argc, char** argv) {
                         response += std::to_string(FAILURE_ALREADY_EXISTS) + ";";
                     } else {
                         server.addRoom(room);
-                        response += "0;";
+                        response += std::to_string(SUCCESS) + ";";
                     }
                     break;
                 case JOIN:
@@ -210,9 +213,10 @@ int main(int argc, char** argv) {
                     if (server.roomExists(room)) {
                         response += std::to_string(server.get_port(room)) + ";";
                         response += std::to_string(server.num_members(room)) + ";";
-                        response += "0;";
+                        response += std::to_string(SUCCESS) + ";";
+
                     } else {
-                        response += "2;";
+                        response += std::to_string(FAILURE_NOT_EXISTS) + ";";
                     }
                     break;
                 case DELETE:
@@ -222,21 +226,20 @@ int main(int argc, char** argv) {
                         // 2. terminate connections
                         // 3. close socket for that room
                         server.removeRoom(room);
-                        response += "0;";
+                        response += std::to_string(SUCCESS) + ";";
                     } else {
-                        response += "2;";
+                        response += std::to_string(FAILURE_NOT_EXISTS) + ";";
                     }
                     break;
                 default:
-                    response += "4;";
+                    response += std::to_string(FAILURE_UNKNOWN) + ";";
             }
         } else {
-            response += "3;";
+            response += std::to_string(FAILURE_INVALID) + ";";
         }
 
         // send response
         send(connection, response.c_str(), response.size(), 0);
-        std::cout << "TEST: " << response << std::endl;
 
         // Close the connection
         close(connection);

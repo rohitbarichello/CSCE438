@@ -1,8 +1,7 @@
 #ifndef INTERFACE_H_
 #define INTERFACE_H_
-#include <ctype.h>
-#include <string.h>
 #include <arpa/inet.h>
+#include <ctype.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <signal.h>
@@ -12,9 +11,11 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
+
 #include <cerrno>
 #include <iostream>
 #include <string>
+#include <thread>
 #include <vector>
 
 // maximum size of data for the communication using TCP/IP
@@ -32,6 +33,10 @@ enum Status {
     FAILURE_INVALID,
     FAILURE_UNKNOWN
 };
+
+enum command_type { CREATE,
+                    JOIN,
+                    DELETE };
 
 /* 
  * Reply structure is designed to be used for displaying the

@@ -1,22 +1,16 @@
-all: crc crsd temp
+all: crc crsd
 
 clean: 
 	rm -f *.o *.bin crc
 
 crc.o: crc.c
-	g++ -c crc.c
+	g++ -c crc.c -pthread
 
 crc: crc.o
-	g++ crc.o -o crc
+	g++ crc.o -o crc -pthread
 
 crsd.o: crsd.c 
-	g++ -c crsd.c
+	g++ -c crsd.c -pthread
 
 crsd: crsd.o
-	g++ crsd.o -o crsd
-
-temp.o: temp.c 
-	g++ -c temp.c
-
-temp: temp.o
-	g++ temp.o -o temp
+	g++ crsd.o -o crsd -pthread

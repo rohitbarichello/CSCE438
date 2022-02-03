@@ -11,7 +11,6 @@ void signal_callback_handler(int signum) {
 }
 
 int main(int argc, char** argv) {
-    //
     signal(SIGINT, signal_callback_handler);
 
     // make sure correct number of args passed
@@ -37,11 +36,11 @@ int main(int argc, char** argv) {
         Reply reply = process_command(sockfd, command);
         display_reply(command, reply);
 
-        // // handle join commands correctly
-        // if (strncmp(command, "JOIN", 4) == 0) {
-        //     printf("Now you are in the chatmode\n");
-        //     process_chatmode(argv[1], reply.port);
-        // }
+        // handle join commands correctly
+        if (strncmp(command, "JOIN", 4) == 0) {
+            printf("Now you are in the chatmode\n");
+            process_chatmode(argv[1], reply.port);
+        }
 
         close(sockfd);
     }
@@ -83,11 +82,17 @@ int connect_to(const char* host, const int port) {
 }
 
 std::vector<std::string> parse_response(char* buffer) {
+    // printf("\nPARSE\n");
+    // printf("-------\n");
     std::string response = buffer;
     std::vector<std::string> args;
 
-    int semiColonIndex = -1;
+    // printf("Response: %s\n", response.c_str());
+    // printf("Response Length: %i\n", int(response.length()));
+
+    int semiColonIndex = 0;
     while (semiColonIndex != std::string::npos && response.length() > 1) {
+        // printf("Response: %s\n", response.c_str());
         semiColonIndex = response.find(";");
 
         std::string arg = response.substr(0, semiColonIndex);
@@ -95,6 +100,13 @@ std::vector<std::string> parse_response(char* buffer) {
 
         response = response.substr(semiColonIndex + 1, response.length() - semiColonIndex - 1);
     }
+
+    // printf("ARGS: \n");
+    // for (int i = 0; i < args.size(); i++) {
+    //     printf("Args[%i]: %s \n", i, args[i].c_str());
+    // }
+
+    // printf("-------\n\n");
 
     return args;
 }
@@ -157,11 +169,16 @@ Reply process_command(const int sockfd, char* command) {
 
     std::vector<std::string> args = parse_response(buffer);
 
+    reply.status = (Status)stoi(args[1]);
 
+    if (args.size() >= 4) {
+        reply.status = (Status)stoi(args[3]);
+        reply.num_member = (Status)stoi(args[2]);
+        reply.port = (Status)stoi(args[1]);
+    } else {
+        reply.status = (Status)stoi(args[1]);
+    }
 
-    reply.status = SUCCESS;
-    reply.num_member = 5;
-    reply.port = 1024;
     return reply;
 }
 
@@ -178,32 +195,43 @@ Reply process_command(const int sockfd, char* command) {
  */
 void process_chatmode(const char* host, const int port) {
     // ------------------------------------------------------------
-    // GUIDE 1:
-    // In order to join the chatroom, you are supposed to connect
-    // to the server using host and port.
-    // You may re-use the function "connect_to".
-    // ------------------------------------------------------------
-
-    // ------------------------------------------------------------
     // GUIDE 2:
     // Once the client have been connected to the server, we need
     // to get a message from the user and send it to server.
     // At the same time, the client should wait for a message from
     // the server.
-    // ------------------------------------------------------------
 
-    // ------------------------------------------------------------
-    // IMPORTANT NOTICE:
-    // 1. To get a message from a user, you should use a function
-    // "void get_message(char*, int);" in the interface.h file
-    //
-    // 2. To print the messages from other members, you should use
-    // the function "void display_message(char*)" in the interface.h
-    //
-    // 3. Once a user entered to one of chatrooms, there is no way
-    //    to command mode where the user  enter other commands
-    //    such as CREATE,DELETE,LIST.
-    //    Don't have to worry about this situation, and you can
-    //    terminate the client program by pressing CTRL-C (SIGINT)
-    // ------------------------------------------------------------
+    auto send_message = []() {
+        while (true) {
+            int room_sockfd = connect_to(host, port);
+
+            char message[MAX_DATA];
+            get_message(message, MAX_DATA);
+
+            send(room_sockfd, message, MAX_DATA, 0);
+
+            close(room_sockfd);
+        }
+    };
+
+    auto recv_message = []() {
+        while (true) {
+            int room_sockfd = connect_to(host, port);
+
+            char buffer[MAX_DATA];
+            recv(sockfd, buffer, MAX_DATA, 0);
+
+            
+
+            display_message(buffer);
+
+            close(sockfd);
+        }
+    };
+
+    std::thread send_thread(send_message);
+    std::thread recv_thread(recv_message);
+
+    send_thread.join();
+    recv_thread.join();
 }
