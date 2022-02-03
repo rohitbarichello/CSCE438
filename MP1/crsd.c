@@ -1,55 +1,67 @@
-#include <netdb.h>
-#include <netinet/in.h>
-#include <signal.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <unistd.h>
-#include <vector>
-
-#include <iostream>
-// #include <sys/socket.h>
-
 #include "interface.h"
 
 // socket file descriptor stored globally for graceful closing of socket
 int sockfd;
 
-class Chatroom {
-    // members
-    std::string name;
-    int port, num_members;
+enum command_type { CREATE,
+                    JOIN,
+                    DELETE };
 
+class Chatroom {
+   private:
+    std::string name;
+    int port, num_members, room_sockfd;
+    sockaddr_in room_addr;
+
+   public:
     Chatroom(std::string _name, int _port) {
         name = _name;
         num_members = 0;
         port = _port;
+
+        room_sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+        room_addr.sin_family = AF_INET;
+        room_addr.sin_addr.s_addr = INADDR_ANY;  // listen from any address
+        room_addr.sin_port = htons(port);
+
+        bind(room_sockfd, (struct sockaddr*)&room_addr, sizeof(room_addr));
+
+        listen(room_sockfd, 10);
     }
 
-    std::string name() {
+    std::string get_name() {
         return name;
     }
-}
 
-class Server {
-    Vector<Chatroom> rooms;
-    int numRooms;
-
-    Server() {
-        numRooms = 0;
+    int get_port() {
+        return port;
     }
 
-    void addRoom(std::string name, int port) {
-        rooms.push_back(Chatroom(name, port));
+    int get_num_members() {
+        return num_members;
+    }
+};
+
+class Server {
+    std::vector<Chatroom> rooms;
+    int numRooms, portAddend;
+
+   public:
+    Server() {
+        numRooms = 0;
+        portAddend = 0;
+    }
+
+    void addRoom(std::string name) {
+        rooms.push_back(Chatroom(name, 1024 + portAddend++));
         numRooms++;
     }
 
     void removeRoom(std::string name) {
-        for(int i = 0; i < numRooms; i++) {
-            if(rooms[i].name() == name) {
-                rooms.erase(i);
+        for (int i = 0; i < numRooms; i++) {
+            if (rooms[i].get_name() == name) {
+                rooms.erase(rooms.begin() + i);
                 break;
             }
         }
@@ -57,21 +69,85 @@ class Server {
         numRooms--;
     }
 
-    bool roomAlreadyExists(std::string name) {
-        for(int i = 0; i < numRooms; i++) {
-            if(rooms[i].name() == name) {
+    bool roomExists(std::string name) {
+        for (int i = 0; i < numRooms; i++) {
+            if (rooms[i].get_name() == name) {
                 return true;
             }
         }
-    }
-}
 
-void
-signal_callback_handler(int signum) {
+        return false;
+    }
+
+    int get_numRooms() {
+        return numRooms;
+    }
+
+    int get_port(std::string name) {
+        for (int i = 0; i < numRooms; i++) {
+            if (rooms[i].get_name() == name) {
+                return rooms[i].get_port();
+            }
+        }
+
+        return -1;
+    }
+
+    int num_members(std::string name) {
+        for (int i = 0; i < numRooms; i++) {
+            if (rooms[i].get_name() == name) {
+                return rooms[i].get_num_members();
+            }
+        }
+
+        return -1;
+    }
+};
+
+void signal_callback_handler(int signum) {
     close(sockfd);
     printf("\nServer shutting down \n");
 
     exit(signum);
+}
+
+struct clientMessage {
+    // struct joinResponse {
+    //     int port, numMembers;
+    // };
+
+    std::string arg;
+    command_type type;
+    // joinResponse join;
+    bool valid = true;
+};
+
+clientMessage parse_message(char* buffer) {
+    clientMessage client_message;
+
+    std::string command_string = buffer;
+    std::string command_string_type;
+    int spaceIndex = command_string.find(" ");
+
+    if (spaceIndex == std::string::npos) {
+        client_message.valid = false;
+    } else {
+        command_string_type = command_string.substr(0, spaceIndex);
+
+        if (command_string_type == "CREATE") {
+            client_message.type = CREATE;
+        } else if (command_string_type == "JOIN") {
+            client_message.type = JOIN;
+        } else if (command_string_type == "DELETE") {
+            client_message.type = DELETE;
+        } else {
+            client_message.valid = false;
+        }
+
+        client_message.arg = command_string.substr(spaceIndex + 1, command_string.size() - spaceIndex - 1);
+    }
+
+    return client_message;
 }
 
 int main(int argc, char** argv) {
@@ -95,7 +171,7 @@ int main(int argc, char** argv) {
     addr.sin_addr.s_addr = INADDR_ANY;  // listen from any address
     addr.sin_port = htons(PORT_NUMBER);
 
-    // bind our socket to port 9999
+    // bind our socket to port
     bind(sockfd, (struct sockaddr*)&addr, sizeof(addr));
     // printf("Socket with file descriptor %i bound to port %i \n", sockfd, PORT_NUMBER);
 
@@ -113,23 +189,54 @@ int main(int argc, char** argv) {
         // Read from the connection
         char buffer[100];
         recv(connection, buffer, 100, 0);
-        printf("Message Recieved: %s \n", buffer);
 
-        if (CREATE) {
-            if (server.roomAlreadyExists(PASSED ROOM NAME)) {
-                // SEND MESSAGE THAT THE ROOM ALREADEY EXISTS
-            } else {
-                server.addRoom(PASSED Room Name);
+        clientMessage command = parse_message(buffer);
+
+        std::string response = "";
+        if (command.valid) {
+            std::string room = command.arg;
+            switch (command.type) {
+                case CREATE:
+                    response += "CREATE;";
+                    if (server.roomExists(room)) {
+                        response += std::to_string(FAILURE_ALREADY_EXISTS) + ";";
+                    } else {
+                        server.addRoom(room);
+                        response += "0;";
+                    }
+                    break;
+                case JOIN:
+                    response += "JOIN;";
+                    if (server.roomExists(room)) {
+                        response += std::to_string(server.get_port(room)) + ";";
+                        response += std::to_string(server.num_members(room)) + ";";
+                        response += "0;";
+                    } else {
+                        response += "2;";
+                    }
+                    break;
+                case DELETE:
+                    response += "DELETE;";
+                    if (server.roomExists(room)) {
+                        // 1. send a warning to all connected members of the chatroom
+                        // 2. terminate connections
+                        // 3. close socket for that room
+                        server.removeRoom(room);
+                        response += "0;";
+                    } else {
+                        response += "2;";
+                    }
+                    break;
+                default:
+                    response += "4;";
             }
-        } else if (DELETE) {
-        } else if (JOIN) {
         } else {
-            handle error
+            response += "3;";
         }
 
-        // // Send a message to the connection
-        // std::string response = "Good talking to you\n";
-        // send(connection, response.c_str(), response.size(), 0);
+        // send response
+        send(connection, response.c_str(), response.size(), 0);
+        std::cout << "TEST: " << response << std::endl;
 
         // Close the connection
         close(connection);

@@ -1,24 +1,22 @@
-#include <netdb.h>
-#include <netinet/in.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <unistd.h>
-
 #include "interface.h"
 
-
 int connect_to(const char* host, const int port);
-struct Reply process_command(const int sockfd, char* command);
+Reply process_command(const int sockfd, char* command);
 void process_chatmode(const char* host, const int port);
 
+void signal_callback_handler(int signum) {
+    printf("\nClient shutting down \n");
+
+    exit(signum);
+}
+
 int main(int argc, char** argv) {
+    //
+    signal(SIGINT, signal_callback_handler);
+
     // make sure correct number of args passed
     if (argc != 3) {
-        fprintf(stderr,
-                "usage: enter host address and port number\n");
+        fprintf(stderr, "usage: enter host address and port number\n");
         exit(1);
     }
 
@@ -26,29 +24,24 @@ int main(int argc, char** argv) {
 
     while (true) {
         // get the file descriptor of the socket associated with this instance of the program
-        // this makes me think non-persistant connection. We open and close the socket every iteration
         int sockfd = connect_to(argv[1], atoi(argv[2]));
 
         // prompt user for command to enter
         char command[MAX_DATA];
         get_command(command, MAX_DATA);
 
-        // IF I ENCOUNTER AN ERROR THAT CANT BE EXPLAINED IT MIGHT BE BECAUSE I ELIMINATED THE
-        // KEYOWORD "STRUCT" BEFORE "REPLY". i DID THIS FOR CLARITY. IT SEEMED REDUNDANT BUT MAYBE
-        // IT'S NECCESSARY
+        // convert user's command to uppercase for parsing ease
+        touppercase(command, strlen(command) - 1);
 
         // process the command and get a reply then display the reply to the user
         Reply reply = process_command(sockfd, command);
         display_reply(command, reply);
 
-        // convert user's command to uppercase for parsing ease
-        touppercase(command, strlen(command) - 1);
-
-        // handle join commands correctly
-        if (strncmp(command, "JOIN", 4) == 0) {
-            printf("Now you are in the chatmode\n");
-            process_chatmode(argv[1], reply.port);
-        }
+        // // handle join commands correctly
+        // if (strncmp(command, "JOIN", 4) == 0) {
+        //     printf("Now you are in the chatmode\n");
+        //     process_chatmode(argv[1], reply.port);
+        // }
 
         close(sockfd);
     }
@@ -57,57 +50,64 @@ int main(int argc, char** argv) {
 }
 
 /*
- * Connect to the server using given host and port information
- *
- * @parameter host    host address given by command line argument
- * @parameter port    port given by command line argument
- * 
- * @return socket fildescriptor
+  Connect to the server using given host and port information
+  1. connect to server
+  2. after connection established, we're ready to send or receive message from/to server
+  3. return socket filedescriptor for later use by rest of program
+ 
+  @parameter host    host address given by command line argument
+  @parameter port    port given by command line argument
+  
+  @return socket fildescriptor
  */
 int connect_to(const char* host, const int port) {
-    // 1. connect to server
-    // 2. after connection established, we're ready to send or receive message from/to server
-    // 3. return socket filedescriptor for later use by rest of program
+    // create socket
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
-    // return sockfd;
-    return 0;
+    // sockardd_in struct for connecting to server
+    sockaddr_in serveraddr;
+    serveraddr.sin_family = AF_INET;
+    serveraddr.sin_port = htons(port);
+    serveraddr.sin_addr.s_addr = inet_addr(host);
+
+    // connect to server at address "serveraddr"
+    int connectionStatus = connect(sockfd, (struct sockaddr*)&serveraddr, sizeof(serveraddr));
+
+    // connectionStatus of 0 indicates success in connecting to desired host on specified port
+    if (connectionStatus != 0) {
+        printf("connect() call failed with errno %i: %s \n", errno, strerror(errno));
+        exit(1);
+    }
+
+    return sockfd;
+}
+
+std::vector<std::string> parse_response(char* buffer) {
+    std::string response = buffer;
+    std::vector<std::string> args;
+
+    int semiColonIndex = -1;
+    while (semiColonIndex != std::string::npos && response.length() > 1) {
+        semiColonIndex = response.find(";");
+
+        std::string arg = response.substr(0, semiColonIndex);
+        args.push_back(arg);
+
+        response = response.substr(semiColonIndex + 1, response.length() - semiColonIndex - 1);
+    }
+
+    return args;
 }
 
 /* 
- * Send an input command to the server and return the result
- *
- * @parameter sockfd   socket file descriptor to commnunicate
- *                     with the server
- * @parameter command  command will be sent to the server
- *
- * @return    Reply    
+  Send an input command to the server and return the result
+ 
+  @parameter sockfd   socket file descriptor to commnunicate with the server
+  @parameter command  command will be sent to the server
+ 
+  @return    Reply    
  */
-struct Reply process_command(const int sockfd, char* command) {
-    // ------------------------------------------------------------
-    // GUIDE 1:
-    // In this function, you are supposed to parse a given command
-    // and create your own message in order to communicate with
-    // the server. Surely, you can use the input command without
-    // any changes if your server understand it. The given command
-    // will be one of the followings:
-    //
-    // CREATE <name>
-    // DELETE <name>
-    // JOIN <name>
-    // LIST
-    //
-    // -  "<name>" is a chatroom name that you want to create, delete,
-    // or join.
-    //
-    // - CREATE/DELETE/JOIN and "<name>" are separated by one space.
-    // ------------------------------------------------------------
-
-    // ------------------------------------------------------------
-    // GUIDE 2:
-    // After you create the message, you need to send it to the
-    // server and receive a result from the server.
-    // ------------------------------------------------------------
-
+Reply process_command(const int sockfd, char* command) {
     // ------------------------------------------------------------
     // GUIDE 3:
     // Then, you should create a variable of Reply structure
@@ -149,20 +149,32 @@ struct Reply process_command(const int sockfd, char* command) {
     // "list" is a string that contains a list of chat rooms such
     // as "r1,r2,r3,"
     // ------------------------------------------------------------
+    Reply reply;
 
-    // REMOVE below code and write your own Reply.
-    struct Reply reply;
+    send(sockfd, command, MAX_DATA, 0);
+    char buffer[MAX_DATA];
+    recv(sockfd, buffer, MAX_DATA, 0);
+
+    std::vector<std::string> args = parse_response(buffer);
+
+
+
     reply.status = SUCCESS;
     reply.num_member = 5;
     reply.port = 1024;
     return reply;
 }
 
+// enum Status status;
+// int num_member;
+// int port;
+// char list_room[MAX_DATA];
+
 /* 
- * Get into the chat mode
- * 
- * @parameter host     host address
- * @parameter port     port
+  Get into the chat mode
+  
+  @parameter host     host address
+  @parameter port     port
  */
 void process_chatmode(const char* host, const int port) {
     // ------------------------------------------------------------

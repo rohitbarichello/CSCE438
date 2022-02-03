@@ -1,6 +1,21 @@
 #ifndef INTERFACE_H_
 #define INTERFACE_H_
 #include <ctype.h>
+#include <string.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <cerrno>
+#include <iostream>
+#include <string>
+#include <vector>
 
 // maximum size of data for the communication using TCP/IP
 #define MAX_DATA 256
