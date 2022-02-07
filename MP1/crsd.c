@@ -8,7 +8,7 @@ class Chatroom {
     std::string name;
     int port, num_members, room_sockfd;
     sockaddr_in room_addr;
-    std::vector<DATATYPE> members;
+    std::vector<int> members;
 
    public:
     Chatroom(std::string _name, int _port) {
@@ -25,6 +25,8 @@ class Chatroom {
         bind(room_sockfd, (struct sockaddr*)&room_addr, sizeof(room_addr));
 
         listen(room_sockfd, 10);
+
+        printf("Room %s created on port %i \n", name.c_str(), port);
     }
 
     std::string get_name() {
@@ -39,15 +41,85 @@ class Chatroom {
         return num_members;
     }
 
-    void receive_message() {
-        char buffer[MAX_DATA];
-        recv(sockfd, buffer, MAX_DATA, 0);
+    std::vector<int> get_members() {
+        return members;
+    }
 
-        for(int i = 0; i < members.length(); i++) {
-            send(room_sockfd, buffer, MAX_DATA, 0);
-        }
+    int addUser() {
+        // Grab a connection from the queue
+        int addrlen = sizeof(room_addr);
+
+        // "connection" is a file descriptor of the new socket created to recieve message from this user
+        int connection = accept(room_sockfd, (struct sockaddr*)&room_addr, (socklen_t*)&addrlen);
+
+        members.push_back(connection);
+        num_members++;
+
+        printf("User %i added to room %s,%i ; numMembers: %i, %i \n", connection, name.c_str(), port, num_members, int(members.size()));
+        return connection;
     }
 };
+
+void receive_messages(std::vector<int> members, int userSession_fd, fd_set read_fds) {
+    printf("RECIEVE MESSAGES: \n");
+
+    // check which members have sent data
+    for (int i = 0; i < members.size(); i++) {
+        if (FD_ISSET(members[i], &read_fds)) {
+            // recieve message from this member
+            char message[MAX_DATA];
+            int recvStatus = recv(userSession_fd, message, MAX_DATA, 0);
+            if (recvStatus == -1) {
+                printf("recv() call failed with errno %i: %s \n", errno, strerror(errno));
+                exit(1);
+            }
+            printf("RECV:%s \n", message);
+
+            // now send this message back to all members that aren't the sender
+            for (int i = 0; i < members.size(); i++) {
+                if (members[i] != userSession_fd) {
+                    send(members[i], message, MAX_DATA, 0);
+                }
+            }
+        }
+    }
+}
+
+fd_set build_read_list(std::vector<int> members) {
+    printf("READ LIST: num members is %i\n", int(members.size()));
+    printf("READ LIST: ");
+    fd_set read_fds;
+    FD_ZERO(&read_fds);
+
+    for (int i = 0; i < members.size(); i++) {
+        FD_SET(members[i], &read_fds);
+        printf("%i ", members[i]);
+    }
+
+    printf("\n");
+
+    return read_fds;
+}
+
+// void receive_messages(int userSession_fd, std::vector<int> members) {
+//     printf("RECIEVE MESSAGES: \n");
+
+//     // while (true) {
+//     char message[MAX_DATA];
+//     int recvStatus = recv(userSession_fd, message, MAX_DATA, 0);
+//     if (recvStatus == -1) {
+//         printf("recv() call failed with errno %i: %s \n", errno, strerror(errno));
+//         exit(1);
+//     }
+//     printf("RECV:%s \n", message);
+
+//     for (int i = 0; i < members.size(); i++) {
+//         if ((members)[i] != userSession_fd) {
+//             send((members)[i], message, MAX_DATA, 0);
+//         }
+//     }
+//     // }
+// }
 
 class Server {
     std::vector<Chatroom> rooms;
@@ -60,8 +132,18 @@ class Server {
     }
 
     void addRoom(std::string name) {
-        rooms.push_back(Chatroom(name, 1024 + portAddend++));
+        int newPort = rand() % 49150 + 1025;
+
+        for (int i = 0; i < rooms.size(); i++) {
+            while (newPort == rooms[i].get_port()) {
+                newPort = rand() % 49150 + 1025;
+            }
+        }
+
+        rooms.push_back(Chatroom(name, newPort));
         numRooms++;
+
+        printf("Room %s added\n", name.c_str());
     }
 
     void removeRoom(std::string name) {
@@ -108,6 +190,25 @@ class Server {
 
         return -1;
     }
+
+    void addUser(std::string name) {
+        for (int i = 0; i < numRooms; i++) {
+            if (rooms[i].get_name() == name) {
+                rooms[i].addUser();
+            }
+        }
+    }
+
+    Chatroom getRoom(std::string name) {
+        for (int i = 0; i < numRooms; i++) {
+            if (rooms[i].get_name() == name) {
+                printf("Chatroom with room name %s returned \n", rooms[i].get_name().c_str());
+                return rooms[i];
+            }
+        }
+
+        printf("Chatroom with room name %s not found", name.c_str());
+    }
 };
 
 void signal_callback_handler(int signum) {
@@ -118,13 +219,8 @@ void signal_callback_handler(int signum) {
 }
 
 struct clientMessage {
-    // struct joinResponse {
-    //     int port, numMembers;
-    // };
-
     std::string arg;
     command_type type;
-    // joinResponse join;
     bool valid = true;
 };
 
@@ -157,6 +253,8 @@ clientMessage parse_message(char* buffer) {
 }
 
 int main(int argc, char** argv) {
+    srand(time(0));
+
     Server server;
 
     // register signal handler for ctrl+c server abortion
@@ -184,20 +282,26 @@ int main(int argc, char** argv) {
     printf("Server running on port: %i \n", PORT_NUMBER);
     printf("Exit with ctrl+c \n");
 
+    // for selecting room-specific sockets to read from
+    fd_set read_fds;
+    timeval timeout;
+    timeout.tv_sec = 5;
+    timeout.tv_usec = 100;
+
     while (true) {
         // Grab a connection from the queue
         int addrlen = sizeof(addr);  // this will be the length of addr
         int connection = accept(sockfd, (struct sockaddr*)&addr, (socklen_t*)&addrlen);
 
         // Read from the connection
-        char buffer[100];
-        recv(connection, buffer, 100, 0);
+        char buffer[MAX_DATA];
+        recv(connection, buffer, MAX_DATA, 0);
 
         clientMessage command = parse_message(buffer);
 
         std::string response = "";
+        std::string room = command.arg;
         if (command.valid) {
-            std::string room = command.arg;
             switch (command.type) {
                 case CREATE:
                     response += "CREATE;";
@@ -212,9 +316,8 @@ int main(int argc, char** argv) {
                     response += "JOIN;";
                     if (server.roomExists(room)) {
                         response += std::to_string(server.get_port(room)) + ";";
-                        response += std::to_string(server.num_members(room)) + ";";
+                        response += std::to_string(server.num_members(room) + 1) + ";";
                         response += std::to_string(SUCCESS) + ";";
-
                     } else {
                         response += std::to_string(FAILURE_NOT_EXISTS) + ";";
                     }
@@ -240,6 +343,37 @@ int main(int argc, char** argv) {
 
         // send response
         send(connection, response.c_str(), response.size(), 0);
+
+        // receive a second message to see if intiating chatmode
+        char inChatMode[MAX_DATA];
+        recv(connection, inChatMode, MAX_DATA, 0);
+        printf("CHAT MODE: %i\n", atoi(inChatMode));
+
+        if (atoi(inChatMode)) {
+            Chatroom chatroom = server.getRoom(room);
+            int userSession_fd = chatroom.addUser();  // we add a user and therefore its fd to "members"
+
+            // fd_set containing all elements in "members"
+            printf("NUM ROOMS: %i \n", server.get_numRooms());
+            read_fds = build_read_list(chatroom.get_members());
+
+            // int ready_fds = select(FD_SETSIZE, &read_fds, NULL, NULL, &timeout);
+            // printf("SELECTION OCCURED:  \n");
+            // if (ready_fds == -1) {
+            //     printf("select() call failed with errno %i: %s \n", errno, strerror(errno));
+            //     exit(1);
+            // } else if (ready_fds == -1) {
+            //     printf("select() call returned 0. Nothing to read");
+            // } else {
+            //     // recieve incoming chats and send them back to chat members
+            //     printf("%i fds ready for I/O \n", ready_fds);
+            //     receive_messages(chatroom.get_members(), userSession_fd, read_fds);
+            // }
+
+            // printf("USER SESSION: %i\n", userSession_fd);
+
+            // std::thread userSession(receive_messages, userSession_fd, server.getRoom(room).get_members());
+        }
 
         // Close the connection
         close(connection);

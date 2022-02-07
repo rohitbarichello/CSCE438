@@ -45,6 +45,10 @@
         "stdexcept": "c",
         "streambuf": "c",
         "typeinfo": "c",
-        "ctime": "c"
+        "ctime": "c",
+        "chrono": "c",
+        "ratio": "c",
+        "stop_token": "c",
+        "thread": "c"
     }
 }

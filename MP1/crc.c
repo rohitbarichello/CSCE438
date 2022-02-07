@@ -37,9 +37,12 @@ int main(int argc, char** argv) {
         display_reply(command, reply);
 
         // handle join commands correctly
-        if (strncmp(command, "JOIN", 4) == 0) {
+        if (strncmp(command, "JOIN", 4) == 0 && reply.status == SUCCESS) {
+            send(sockfd, "1", MAX_DATA, 0);
             printf("Now you are in the chatmode\n");
             process_chatmode(argv[1], reply.port);
+        } else {
+            send(sockfd, "0", MAX_DATA, 0);
         }
 
         close(sockfd);
@@ -82,17 +85,11 @@ int connect_to(const char* host, const int port) {
 }
 
 std::vector<std::string> parse_response(char* buffer) {
-    // printf("\nPARSE\n");
-    // printf("-------\n");
     std::string response = buffer;
     std::vector<std::string> args;
 
-    // printf("Response: %s\n", response.c_str());
-    // printf("Response Length: %i\n", int(response.length()));
-
     int semiColonIndex = 0;
     while (semiColonIndex != std::string::npos && response.length() > 1) {
-        // printf("Response: %s\n", response.c_str());
         semiColonIndex = response.find(";");
 
         std::string arg = response.substr(0, semiColonIndex);
@@ -100,13 +97,6 @@ std::vector<std::string> parse_response(char* buffer) {
 
         response = response.substr(semiColonIndex + 1, response.length() - semiColonIndex - 1);
     }
-
-    // printf("ARGS: \n");
-    // for (int i = 0; i < args.size(); i++) {
-    //     printf("Args[%i]: %s \n", i, args[i].c_str());
-    // }
-
-    // printf("-------\n\n");
 
     return args;
 }
@@ -169,6 +159,12 @@ Reply process_command(const int sockfd, char* command) {
 
     std::vector<std::string> args = parse_response(buffer);
 
+    // printf("args: ");
+    // for(int i = 0; i < args.size(); i++) {
+    //     printf("%s ", args[i].c_str());
+    // }
+    // printf("\n");
+
     reply.status = (Status)stoi(args[1]);
 
     if (args.size() >= 4) {
@@ -182,11 +178,6 @@ Reply process_command(const int sockfd, char* command) {
     return reply;
 }
 
-// enum Status status;
-// int num_member;
-// int port;
-// char list_room[MAX_DATA];
-
 /* 
   Get into the chat mode
   
@@ -194,44 +185,42 @@ Reply process_command(const int sockfd, char* command) {
   @parameter port     port
  */
 void process_chatmode(const char* host, const int port) {
-    // ------------------------------------------------------------
-    // GUIDE 2:
-    // Once the client have been connected to the server, we need
-    // to get a message from the user and send it to server.
-    // At the same time, the client should wait for a message from
-    // the server.
+    printf("PROCESSS CHATMODE: \n");
+    int room_sockfd = connect_to(host, port);
+    printf("PROCESSS CHATMODE: connected to room on port %i \n", port);
 
-    auto send_message = []() {
-        while (true) {
-            int room_sockfd = connect_to(host, port);
+    // char message[MAX_DATA];
+    // get_message(message, MAX_DATA);
 
-            char message[MAX_DATA];
-            get_message(message, MAX_DATA);
+    printf("PROCESSS CHATMODE: Ready to send \n");
+    // send(room_sockfd, message, MAX_DATA, 0);
 
-            send(room_sockfd, message, MAX_DATA, 0);
+    // auto recv_message = [=]() {
+    //     while (true) {
+    //         char buffer[MAX_DATA];
+    //         recv(room_sockfd, buffer, MAX_DATA, 0);
 
-            close(room_sockfd);
-        }
-    };
+    //         display_message(buffer);
 
-    auto recv_message = []() {
-        while (true) {
-            int room_sockfd = connect_to(host, port);
+    //         // close(sockfd);
+    //     }
+    // };
+    // std::thread recv_thread(recv_message);
 
-            char buffer[MAX_DATA];
-            recv(sockfd, buffer, MAX_DATA, 0);
+    while (true) {
+        // printf("PROCESSS CHATMODE: Send loop \n");
+        char message[MAX_DATA];
+        get_message(message, MAX_DATA);
 
-            
+        // printf("Message: %s \n", message);
 
-            display_message(buffer);
+        send(room_sockfd, message, MAX_DATA, 0);
 
-            close(sockfd);
-        }
-    };
+        // close(room_sockfd);
+    }
 
-    std::thread send_thread(send_message);
-    std::thread recv_thread(recv_message);
+    // std::thread send_thread(send_message);
 
-    send_thread.join();
-    recv_thread.join();
+    // send_thread.join();
+    // recv_thread.join();
 }

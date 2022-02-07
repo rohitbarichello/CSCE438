@@ -10,6 +10,7 @@
 #include <string.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <cerrno>
@@ -116,6 +117,7 @@ void get_command(char* comm, const int size) {
  * This function prompts a user to enter a command.
  */
 void get_message(char* message, const int size) {
+    printf("Message> ");
     fgets(message, size, stdin);
     message[strlen(message) - 1] = '\0';
 }
