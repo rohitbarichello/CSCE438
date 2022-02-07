@@ -185,27 +185,21 @@ Reply process_command(const int sockfd, char* command) {
   @parameter port     port
  */
 void process_chatmode(const char* host, const int port) {
-    printf("PROCESSS CHATMODE: \n");
+    // printf("PROCESSS CHATMODE: \n");
     int room_sockfd = connect_to(host, port);
-    printf("PROCESSS CHATMODE: connected to room on port %i \n", port);
+    // printf("PROCESSS CHATMODE: connected to room on port %i \n", port);
 
-    // char message[MAX_DATA];
-    // get_message(message, MAX_DATA);
+    // printf("PROCESSS CHATMODE: Ready to send \n");
 
-    printf("PROCESSS CHATMODE: Ready to send \n");
-    // send(room_sockfd, message, MAX_DATA, 0);
+    auto recv_message = [=]() {
+        while (true) {
+            char buffer[MAX_DATA];
+            recv(room_sockfd, buffer, MAX_DATA, 0);
 
-    // auto recv_message = [=]() {
-    //     while (true) {
-    //         char buffer[MAX_DATA];
-    //         recv(room_sockfd, buffer, MAX_DATA, 0);
-
-    //         display_message(buffer);
-
-    //         // close(sockfd);
-    //     }
-    // };
-    // std::thread recv_thread(recv_message);
+            display_message(buffer);
+        }
+    };
+    std::thread recv_thread(recv_message);
 
     while (true) {
         // printf("PROCESSS CHATMODE: Send loop \n");
@@ -215,12 +209,8 @@ void process_chatmode(const char* host, const int port) {
         // printf("Message: %s \n", message);
 
         send(room_sockfd, message, MAX_DATA, 0);
-
-        // close(room_sockfd);
     }
 
-    // std::thread send_thread(send_message);
 
-    // send_thread.join();
-    // recv_thread.join();
+    recv_thread.join();
 }

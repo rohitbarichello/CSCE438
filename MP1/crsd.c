@@ -357,22 +357,20 @@ int main(int argc, char** argv) {
             printf("NUM ROOMS: %i \n", server.get_numRooms());
             read_fds = build_read_list(chatroom.get_members());
 
-            // int ready_fds = select(FD_SETSIZE, &read_fds, NULL, NULL, &timeout);
-            // printf("SELECTION OCCURED:  \n");
-            // if (ready_fds == -1) {
-            //     printf("select() call failed with errno %i: %s \n", errno, strerror(errno));
-            //     exit(1);
-            // } else if (ready_fds == -1) {
-            //     printf("select() call returned 0. Nothing to read");
-            // } else {
-            //     // recieve incoming chats and send them back to chat members
-            //     printf("%i fds ready for I/O \n", ready_fds);
-            //     receive_messages(chatroom.get_members(), userSession_fd, read_fds);
-            // }
+            int ready_fds = select(FD_SETSIZE, &read_fds, NULL, NULL, &timeout);
+            printf("SELECTION OCCURED:  \n");
+            if (ready_fds == -1) {
+                printf("select() call failed with errno %i: %s \n", errno, strerror(errno));
+                exit(1);
+            } else if (ready_fds == -1) {
+                printf("select() call returned 0. Nothing to read");
+            } else {
+                // recieve incoming chats and send them back to chat members
+                printf("%i fds ready for I/O \n", ready_fds);
+                receive_messages(chatroom.get_members(), userSession_fd, read_fds);
+            }
 
-            // printf("USER SESSION: %i\n", userSession_fd);
-
-            // std::thread userSession(receive_messages, userSession_fd, server.getRoom(room).get_members());
+            printf("USER SESSION: %i\n", userSession_fd);
         }
 
         // Close the connection
