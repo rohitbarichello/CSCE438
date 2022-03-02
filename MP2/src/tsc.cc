@@ -45,14 +45,6 @@ int main(int argc, char** argv) {
 }
 
 int Client::connectTo() {
-    // In this function, you are supposed to create a stub so that
-    // you call service methods in the processCommand/porcessTimeline functions.
-    // That is, the stub should be accessible when you want to call any service methods in those functions.
-    // I recommend you to have the stub as a member variable in your own Client class.
-    // Please refer to gRpc tutorial how to create a stub.
-
-    printf("CONNECT TO\n");
-
     // create our stub
     stub_ = SNSService::NewStub(
         grpc::CreateChannel(
@@ -74,61 +66,63 @@ int Client::connectTo() {
 
     // Returns results based on RPC status
     if (status.ok()) {
-        printf("Connection success \n");
         return 1;
     } else {
-        printf("Connection failed \n");
         return -1;
     }
 }
 
 IReply Client::processCommand(std::string& input) {
-    // ------------------------------------------------------------
-    // GUIDE 1:
-    // In this function, you are supposed to parse the given input
-    // command and create your own message so that you call an
-    // appropriate service method. The input command will be one
-    // of the followings:
-    //
-    // FOLLOW <username>
-    // UNFOLLOW <username>
-    // LIST
-    // TIMELINE
-    //
-    // ------------------------------------------------------------
-
-    // ------------------------------------------------------------
-    // GUIDE 2:
-    // Then, you should create a variable of IReply structure
-    // provided by the client.h and initialize it according to
-    // the result. Finally you can finish this function by returning
-    // the IReply.
-    // ------------------------------------------------------------
-
-    // ------------------------------------------------------------
-    // HINT: How to set the IReply?
-    // Suppose you have "Follow" service method for FOLLOW command,
-    // IReply can be set as follow:
-    //
-    //     // some codes for creating/initializing parameters for
-    //     // service method
-    //     IReply ire;
-    //     grpc::Status status = stub_->Follow(&context, /* some parameters */);
-    //     ire.grpc_status = status;
-    //     if (status.ok()) {
-    //         ire.comm_status = SUCCESS;
-    //     } else {
-    //         ire.comm_status = FAILURE_NOT_EXISTS;
-    //     }
-    //
-    //      return ire;
-    //
-    // IMPORTANT:
-    // For the command "LIST", you should set both "all_users" and
-    // "following_users" member variable of IReply.
-    // ------------------------------------------------------------
-
+    // our reply struct
     IReply ire;
+
+    // parse input and store in command and arg strings
+    std::string command;
+    std::string arg = "";
+    int spaceIndex = input.find(" ");
+
+    if (spaceIndex == std::string::npos) {
+        command = input;
+    } else {
+        command = input.substr(0, spaceIndex);
+        arg = input.substr(spaceIndex + 1, input.size() - spaceIndex - 1);
+    }
+
+    // container for server request
+    Request request;
+    request.set_username(username);
+    command = touppercase(command);
+    request.set_arguments(arg);
+
+    // Container for server response
+    Reply reply;
+
+    // our context container
+    ClientContext context;
+
+    // fire off RPC corresponding to command
+    if (command == "FOLLOW") {
+        grpc::Status status = stub_->Follow(&context, request, &reply);
+
+        ire.grpc_status = status;
+
+        if (status.ok()) {
+            ire.comm_status = SUCCESS;
+        } else {
+            ire.comm_status = FAILURE_NOT_EXISTS;
+        }
+    } else if (command == "UNFOLLOW") {
+        grpc::Status status = stub_->UnFollow(&context, request, &reply);
+
+        ire.grpc_status = status;
+
+        if (status.ok()) {
+            ire.comm_status = SUCCESS;
+        } else {
+            ire.comm_status = FAILURE_NOT_EXISTS;
+        }
+    }
+
     return ire;
 }
 

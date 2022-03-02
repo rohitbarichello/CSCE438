@@ -8,7 +8,7 @@ struct post {
 class User {
    private:
     std::string name;
-    std::vector<User> following;
+    std::vector<std::string> following;
     std::vector<struct post> timeline;
 
    public:
@@ -18,6 +18,29 @@ class User {
 
     std::string get_name() {
         return name;
+    }
+
+    void follow(std::string name) {
+        for (int i = 0; i < following.size(); i++) {
+            if (following[i] == name) {
+                printf("Already following %s\n", name.c_str());
+                return;
+            }
+        }
+
+        following.push_back(name);
+    }
+
+    void unfollow(std::string name) {
+        for (int i = 0; i < following.size(); i++) {
+            if (following[i] == name) {
+                following.erase(following.begin() + i);
+                return;
+            }
+        }
+
+        following.push_back(name);
+        printf("Already not following %s\n", name.c_str());
     }
 };
 
@@ -31,8 +54,6 @@ class ServerInstance {
     }
 
     int addUser(std::string name) {
-        listUsers();
-
         for (int i = 0; i < numUsers; i++) {
             if (users[i].get_name() == name) {
                 return 0;
@@ -44,6 +65,38 @@ class ServerInstance {
         numUsers++;
 
         return 1;
+    }
+
+    int follow(std::string user, std::string user_to_follow) {
+        for (int i = 0; i < numUsers; i++) {
+            if (users[i].get_name() == user_to_follow) {
+                for (int j = 0; j < numUsers; j++) {
+                    if (users[j].get_name() == user) {
+                        users[j].follow(user_to_follow);
+                        return 1;
+                    }
+                }
+            }
+        }
+
+        printf("There is no user with the name %s \n", user_to_follow.c_str());
+        return 0;
+    }
+
+    int unfollow(std::string user, std::string user_to_unfollow) {
+        for (int i = 0; i < numUsers; i++) {
+            if (users[i].get_name() == user_to_unfollow) {
+                for (int j = 0; j < numUsers; j++) {
+                    if (users[j].get_name() == user) {
+                        users[j].unfollow(user_to_unfollow);
+                        return 1;
+                    }
+                }
+            }
+        }
+
+        printf("There is no user with the name %s \n", user_to_unfollow.c_str());
+        return 0;
     }
 
     void listUsers() {
@@ -71,21 +124,31 @@ class SNSServiceImpl final : public SNSService::Service {
     }
 
     Status Follow(ServerContext* context, const Request* request, Reply* reply) override {
-        // ------------------------------------------------------------
-        // In this function, you are to write code that handles
-        // request from a user to follow one of the existing
-        // users
-        // ------------------------------------------------------------
-        return Status::OK;
+        // get username of request
+        std::string user = request->username();
+        std::string user_to_follow = request->arguments();
+
+        int followSuccess = serverInstance.follow(user, user_to_follow);
+
+        if (followSuccess) {
+            return Status::OK;
+        } else {
+            return grpc::Status(grpc::StatusCode::NOT_FOUND, "There is no user with username: " + user_to_follow);
+        }
     }
 
     Status UnFollow(ServerContext* context, const Request* request, Reply* reply) override {
-        // ------------------------------------------------------------
-        // In this function, you are to write code that handles
-        // request from a user to unfollow one of his/her existing
-        // followers
-        // ------------------------------------------------------------
-        return Status::OK;
+        // get username of request
+        std::string user = request->username();
+        std::string user_to_follow = request->arguments();
+
+        int unfollowSuccess = serverInstance.unfollow(user, user_to_follow);
+
+        if (unfollowSuccess) {
+            return Status::OK;
+        } else {
+            return grpc::Status(grpc::StatusCode::NOT_FOUND, "There is no user with username: " + user_to_follow);
+        }
     }
 
     Status Login(ServerContext* context, const Request* request, Reply* reply) override {

@@ -13,7 +13,7 @@ service SNSService{
 // The request definition
 message Request {
   string username = 1;
-  repeated string arguments = 2;
+  string arguments = 2;
 }
 
 // The response definition

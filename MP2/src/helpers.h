@@ -90,7 +90,7 @@ class IClient {
 
 void IClient::run() {
     int ret = connectTo();
-    
+
     if (ret < 0) {
         std::cout << "connection failed: " << ret << std::endl;
         exit(1);
@@ -107,6 +107,21 @@ void IClient::run() {
             processTimeline();
         }
     }
+}
+
+std::string touppercase(std::string string) {
+    int n = string.size();
+    char *str = strcpy(new char[string.length() + 1], string.c_str());
+
+    int i;
+    for (i = 0; str[i]; i++)
+        str[i] = toupper((unsigned char)str[i]);
+
+    std::string ret(str);
+
+    delete[] str;
+
+    return ret;
 }
 
 void IClient::displayTitle() const {
