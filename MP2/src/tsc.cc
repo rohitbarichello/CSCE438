@@ -2,9 +2,7 @@
 
 class Client : public IClient {
    public:
-    Client(const std::string& hname, const std::string& uname, const std::string& p) : hostname(hname), username(uname), port(p) {
-        printf("Client %s created\n", username.c_str());
-    }
+    Client(const std::string& hname, const std::string& uname, const std::string& p) : hostname(hname), username(uname), port(p) {}
 
    protected:
     virtual int connectTo();
@@ -148,26 +146,53 @@ IReply Client::processCommand(std::string& input) {
         ire.all_users = all_users;
         ire.following_users = following_users;
     } else if (command == "TIMELINE") {
+        ire.grpc_status = grpc::Status(grpc::StatusCode::OK, "Entering Timeline Mode");
+        ire.comm_status = SUCCESS;
     }
 
     return ire;
 }
 
 void Client::processTimeline() {
-    // ------------------------------------------------------------
-    // In this function, you are supposed to get into timeline mode.
-    // You may need to call a service method to communicate with
-    // the server. Use getPostMessage/displayPostMessage functions
-    // for both getting and displaying messages in timeline mode.
-    // You should use them as you did in hw1.
-    // ------------------------------------------------------------
+    ClientContext context;
 
-    // ------------------------------------------------------------
-    // IMPORTANT NOTICE:
-    //
-    // Once a user enter to timeline mode , there is no way
-    // to command mode. You don't have to worry about this situation,
-    // and you can terminate the client program by pressing
-    // CTRL-C (SIGINT)
-    // ------------------------------------------------------------
+    // RPC Call
+    std::shared_ptr<grpc::ClientReaderWriter<Message, Message> > stream(stub_->Timeline(&context));
+
+    // initial write to tell server the username over this channel
+    Message sendingUsername;
+    sendingUsername.set_username(username);
+    stream->Write(sendingUsername);
+
+    // read thread implementation
+    auto write = [this, stream]() {
+        Message outgoing;
+
+        outgoing.set_username(username);
+
+        while (true) {
+            outgoing.set_msg(getPostMessage());
+            // outgoing.set_timestamp(time(0));
+
+            stream->Write(outgoing);
+        }
+    };
+
+    // read thread implementation
+    auto read = [this, stream]() {
+        Message incoming;
+
+        while (true) {
+            if (stream->Read(&incoming)) {
+                time_t timeT = google::protobuf::util::TimeUtil::TimestampToTimeT(incoming.timestamp());
+                displayPostMessage(incoming.username(), incoming.msg(), timeT);
+            }
+        }
+    };
+
+    std::thread writeThread(write);
+    std::thread readThread(read);
+
+    writeThread.join();
+    readThread.join();
 }

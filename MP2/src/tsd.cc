@@ -1,16 +1,25 @@
 #include "helpers.h"
 
+
+
+// Global counter to act as id for posts
+int postCounter = 1;
+
 struct post {
-    std::string user, content, post_time_string;
-    time_t post_time;
+    std::string user, content;
+    int id;
 };
+
+// Global vector of every post, acting as a stack of sorts. Newest post is at index 0
+std::vector<post> all_posts;
 
 class User {
    private:
     std::string name;
     std::vector<std::string> following;
     std::vector<std::string> followers;
-    std::vector<struct post> timeline;
+    std::vector<int> timeline;
+    std::vector<int> posts_seen;
 
    public:
     User(std::string _name) {
@@ -58,6 +67,42 @@ class User {
                 return;
             }
         }
+    }
+
+    void add_post(int Post) {
+        timeline.insert(timeline.begin(), Post);
+    }
+
+    bool havent_seen_it(int Post) {
+        for (int i = 0; i < posts_seen.size(); i++) {
+            if (posts_seen[i] == Post) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    bool following_them(std::string name) {
+        for (int i = 0; i < following.size(); i++) {
+            if (following[i] == name) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    struct post* updateTimeline() {
+        for (int i = 0; i < all_posts.size(); i++) {
+            struct post Post = all_posts[i];
+            if (havent_seen_it(Post.id) && following_them(Post.user)) {
+                posts_seen.push_back(Post.id);
+                return &Post;
+            }
+        }
+
+        return nullptr;
     }
 };
 
@@ -141,6 +186,22 @@ class ServerInstance {
     std::vector<User> all_users() {
         return users;
     }
+
+    void userPosted(std::string name, int Post) {
+        for (int i = 0; i < numUsers; i++) {
+            if (users[i].get_name() == name) {
+                users[i].add_post(Post);
+            }
+        }
+    }
+
+    struct post *updateTimeline(std::string name) {
+        for (int i = 0; i < numUsers; i++) {
+            if (users[i].get_name() == name) {
+                return users[i].updateTimeline();
+            }
+        }
+    }
 };
 
 // Global instance of our server. Stores the data for this server, essentially a local DB
@@ -205,11 +266,43 @@ class SNSServiceImpl final : public SNSService::Service {
     }
 
     Status Timeline(ServerContext* context, ServerReaderWriter<Message, Message>* stream) override {
-        // ------------------------------------------------------------
-        // In this function, you are to write code that handles
-        // receiving a message/post from a user, recording it in a file
-        // and then making it available on his/her follower's streams
-        // ------------------------------------------------------------
+        Message incoming;
+        Message outgoing;
+        bool read = true;
+
+        stream->Read(&incoming);
+        std::string user = incoming.username();
+
+        while (true) {
+            if (read) {
+                if (stream->Read(&incoming)) {
+                    struct post Post;
+
+                    Post.id = postCounter++;
+                    Post.user = incoming.username();
+                    Post.content = incoming.msg();
+
+                    serverInstance.userPosted(user, Post.id);
+                    all_posts.insert(all_posts.begin(), Post);
+                }
+
+                read = false;
+            } else {
+                struct post* PostPtr = serverInstance.updateTimeline(user);
+
+                if (PostPtr) {
+                    struct post Post = *PostPtr;
+
+                    outgoing.set_username(Post.user);
+                    outgoing.set_msg(Post.content);
+
+                    stream->Write(outgoing);
+                }
+
+                read = true;
+            }
+        }
+
         return Status::OK;
     }
 };
