@@ -1,31 +1,64 @@
-#include <google/protobuf/duration.pb.h>
-#include <google/protobuf/timestamp.pb.h>
-#include <google/protobuf/util/time_util.h>
-#include <grpc++/grpc++.h>
-#include <stdlib.h>
-#include <unistd.h>
+#include "helpers.h"
 
-#include <ctime>
-#include <fstream>
-#include <iostream>
-#include <memory>
-#include <string>
+struct post {
+    std::string user, content, post_time_string;
+    time_t post_time;
+};
 
-#include "sns.grpc.pb.h"
+class User {
+   private:
+    std::string name;
+    std::vector<User> following;
+    std::vector<struct post> timeline;
 
-using csce438::Message;
-using csce438::Reply;
-using csce438::Request;
-using csce438::SNSService;
-using google::protobuf::Duration;
-using google::protobuf::Timestamp;
-using grpc::Server;
-using grpc::ServerBuilder;
-using grpc::ServerContext;
-using grpc::ServerReader;
-using grpc::ServerReaderWriter;
-using grpc::ServerWriter;
-using grpc::Status;
+   public:
+    User(std::string _name) {
+        name = _name;
+    }
+
+    std::string get_name() {
+        return name;
+    }
+};
+
+class ServerInstance {
+    std::vector<User> users;
+    int numUsers;
+
+   public:
+    ServerInstance() {
+        numUsers = 0;
+    }
+
+    int addUser(std::string name) {
+        listUsers();
+
+        for (int i = 0; i < numUsers; i++) {
+            if (users[i].get_name() == name) {
+                return 0;
+            }
+        }
+
+        users.push_back(User(name));
+
+        numUsers++;
+
+        return 1;
+    }
+
+    void listUsers() {
+        printf("\nUsers Listed: \n");
+
+        for (int i = 0; i < numUsers; i++) {
+            printf("%s \n", users[i].get_name().c_str());
+        }
+
+        printf("\n");
+    }
+};
+
+// Global instance of our server. Stores the data for this server, essentially a local DB
+ServerInstance serverInstance;
 
 class SNSServiceImpl final : public SNSService::Service {
     Status List(ServerContext* context, const Request* request, Reply* reply) override {
@@ -56,11 +89,14 @@ class SNSServiceImpl final : public SNSService::Service {
     }
 
     Status Login(ServerContext* context, const Request* request, Reply* reply) override {
-        // ------------------------------------------------------------
-        // In this function, you are to write code that handles
-        // a new user and verify if the username is available
-        // or already taken
-        // ------------------------------------------------------------
+        // get username of request
+        std::string user = request->username();
+
+        // check if user already exists. if not, add them
+        if (!serverInstance.addUser(user)) {
+            return grpc::Status(grpc::StatusCode::ALREADY_EXISTS, "There is already a user with username: " + user);
+        }
+
         return Status::OK;
     }
 
@@ -75,16 +111,32 @@ class SNSServiceImpl final : public SNSService::Service {
 };
 
 void RunServer(std::string port_no) {
-    // ------------------------------------------------------------
-    // In this function, you are to write code
-    // which would start the server, make it listen on a particular
-    // port number.
-    // ------------------------------------------------------------
+    // address of the server
+    std::string server_address = "127.0.0.1:" + port_no;
+
+    // implementation of the service
+    SNSServiceImpl service;
+
+    // an object that's gonna be passed to our server to get it built
+    ServerBuilder builder;
+
+    // Listen on the given address without any authentication mechanism
+    builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
+
+    // This says that "service" is the code that the server will use to talk to the client
+    builder.RegisterService(&service);
+
+    // Assembling the server
+    std::unique_ptr<Server> server(builder.BuildAndStart());
+    std::cout << "Server running on localhost, listening on port: " << port_no << std::endl;
+
+    server->Wait();
 }
 
 int main(int argc, char** argv) {
     std::string port = "3010";
     int opt = 0;
+
     while ((opt = getopt(argc, argv, "p:")) != -1) {
         switch (opt) {
             case 'p':
@@ -94,6 +146,8 @@ int main(int argc, char** argv) {
                 std::cerr << "Invalid Command Line Argument\n";
         }
     }
+
     RunServer(port);
+
     return 0;
 }

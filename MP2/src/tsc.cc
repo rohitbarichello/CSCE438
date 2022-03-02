@@ -1,17 +1,10 @@
-#include <grpc++/grpc++.h>
-#include <unistd.h>
-
-#include <iostream>
-#include <string>
-
-#include "client.h"
+#include "helpers.h"
 
 class Client : public IClient {
    public:
-    Client(const std::string& hname,
-           const std::string& uname,
-           const std::string& p)
-        : hostname(hname), username(uname), port(p) {}
+    Client(const std::string& hname, const std::string& uname, const std::string& p) : hostname(hname), username(uname), port(p) {
+        printf("Client %s created\n", username.c_str());
+    }
 
    protected:
     virtual int connectTo();
@@ -19,13 +12,8 @@ class Client : public IClient {
     virtual void processTimeline();
 
    private:
-    std::string hostname;
-    std::string username;
-    std::string port;
-
-    // You can have an instance of the client stub
-    // as a member variable.
-    //std::unique_ptr<NameOfYourStubClass::Stub> stub_;
+    std::string hostname, username, port;
+    std::unique_ptr<SNSService::Stub> stub_;
 };
 
 int main(int argc, char** argv) {
@@ -50,24 +38,48 @@ int main(int argc, char** argv) {
     }
 
     Client myc(hostname, username, port);
-    // You MUST invoke "run_client" function to start business logic
+
     myc.run_client();
 
     return 0;
 }
 
 int Client::connectTo() {
-    // ------------------------------------------------------------
     // In this function, you are supposed to create a stub so that
-    // you call service methods in the processCommand/porcessTimeline
-    // functions. That is, the stub should be accessible when you want
-    // to call any service methods in those functions.
-    // I recommend you to have the stub as
-    // a member variable in your own Client class.
+    // you call service methods in the processCommand/porcessTimeline functions.
+    // That is, the stub should be accessible when you want to call any service methods in those functions.
+    // I recommend you to have the stub as a member variable in your own Client class.
     // Please refer to gRpc tutorial how to create a stub.
-    // ------------------------------------------------------------
 
-    return 1;  // return 1 if success, otherwise return -1
+    printf("CONNECT TO\n");
+
+    // create our stub
+    stub_ = SNSService::NewStub(
+        grpc::CreateChannel(
+            hostname + ":" + port,
+            grpc::InsecureChannelCredentials()));
+
+    // container for server request
+    Request request;
+    request.set_username(username);
+
+    // Container for server response
+    Reply reply;
+
+    // our context container
+    ClientContext context;
+
+    // Actual Remote Procedure Call
+    Status status = stub_->Login(&context, request, &reply);
+
+    // Returns results based on RPC status
+    if (status.ok()) {
+        printf("Connection success \n");
+        return 1;
+    } else {
+        printf("Connection failed \n");
+        return -1;
+    }
 }
 
 IReply Client::processCommand(std::string& input) {
