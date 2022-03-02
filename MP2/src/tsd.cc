@@ -9,6 +9,7 @@ class User {
    private:
     std::string name;
     std::vector<std::string> following;
+    std::vector<std::string> followers;
     std::vector<struct post> timeline;
 
    public:
@@ -39,8 +40,24 @@ class User {
             }
         }
 
-        following.push_back(name);
         printf("Already not following %s\n", name.c_str());
+    }
+
+    std::vector<std::string> get_followers() {
+        return followers;
+    }
+
+    void add_follower(std::string name) {
+        followers.push_back(name);
+    }
+
+    void remove_follower(std::string name) {
+        for (int i = 0; i < followers.size(); i++) {
+            if (followers[i] == name) {
+                followers.erase(followers.begin() + i);
+                return;
+            }
+        }
     }
 };
 
@@ -73,9 +90,16 @@ class ServerInstance {
                 for (int j = 0; j < numUsers; j++) {
                     if (users[j].get_name() == user) {
                         users[j].follow(user_to_follow);
-                        return 1;
                     }
                 }
+
+                for (int j = 0; j < numUsers; j++) {
+                    if (users[j].get_name() == user_to_follow) {
+                        users[j].add_follower(user);
+                    }
+                }
+
+                return 1;
             }
         }
 
@@ -89,9 +113,16 @@ class ServerInstance {
                 for (int j = 0; j < numUsers; j++) {
                     if (users[j].get_name() == user) {
                         users[j].unfollow(user_to_unfollow);
-                        return 1;
                     }
                 }
+
+                for (int j = 0; j < numUsers; j++) {
+                    if (users[j].get_name() == user_to_unfollow) {
+                        users[j].remove_follower(user);
+                    }
+                }
+
+                return 1;
             }
         }
 
@@ -99,14 +130,16 @@ class ServerInstance {
         return 0;
     }
 
-    void listUsers() {
-        printf("\nUsers Listed: \n");
-
+    std::vector<std::string> followers(std::string name) {
         for (int i = 0; i < numUsers; i++) {
-            printf("%s \n", users[i].get_name().c_str());
+            if (users[i].get_name() == name) {
+                return users[i].get_followers();
+            }
         }
+    }
 
-        printf("\n");
+    std::vector<User> all_users() {
+        return users;
     }
 };
 
@@ -115,11 +148,19 @@ ServerInstance serverInstance;
 
 class SNSServiceImpl final : public SNSService::Service {
     Status List(ServerContext* context, const Request* request, Reply* reply) override {
-        // ------------------------------------------------------------
-        // In this function, you are to write code that handles
-        // LIST request from the user. Ensure that both the fields
-        // all_users & following_users are populated
-        // ------------------------------------------------------------
+        // get username of request
+        std::string user = request->username();
+
+        std::vector<User> all_users = serverInstance.all_users();
+        for (int i = 0; i < all_users.size(); i++) {
+            reply->add_all_users(all_users[i].get_name());
+        }
+
+        std::vector<std::string> following_users = serverInstance.followers(user);
+        for (int i = 0; i < following_users.size(); i++) {
+            reply->add_following_users(following_users[i]);
+        }
+
         return Status::OK;
     }
 

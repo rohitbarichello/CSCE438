@@ -121,6 +121,33 @@ IReply Client::processCommand(std::string& input) {
         } else {
             ire.comm_status = FAILURE_NOT_EXISTS;
         }
+    } else if (command == "LIST") {
+        grpc::Status status = stub_->List(&context, request, &reply);
+
+        ire.grpc_status = status;
+
+        if (status.ok()) {
+            ire.comm_status = SUCCESS;
+        } else {
+            ire.comm_status = FAILURE_UNKNOWN;
+        }
+
+        std::vector<std::string> following_users;
+        std::vector<std::string> all_users;
+
+        const google::protobuf::RepeatedPtrField<std::string>& all_users_protobuf = reply.all_users();
+        for (int i = 0; i < all_users_protobuf.size(); i++) {
+            all_users.push_back(all_users_protobuf[i]);
+        }
+
+        const google::protobuf::RepeatedPtrField<std::string>& following_users_protobuf = reply.following_users();
+        for (int i = 0; i < following_users_protobuf.size(); i++) {
+            following_users.push_back(following_users_protobuf[i]);
+        }
+
+        ire.all_users = all_users;
+        ire.following_users = following_users;
+    } else if (command == "TIMELINE") {
     }
 
     return ire;
