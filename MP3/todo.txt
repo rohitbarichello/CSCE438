@@ -1,0 +1,8 @@
+- heartbeat for master
+- cloning of master to slave instance to be done with text files
+- directory to store files
+- sync process
+    - 30 sec check for updates to cluster text files
+    - updates to other clusters 
+        - follower list updates
+        - timeline file updates

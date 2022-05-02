@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "new": "cpp",
+        "chrono": "cpp",
+        "thread": "cpp"
+    }
+}
