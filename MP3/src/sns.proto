@@ -27,7 +27,8 @@ message ListReply {
 message Request {
   string username = 1;
   string fileType = 2;
-  repeated string arguments = 3;
+  string data = 3;
+  repeated string arguments = 4;
 }
 
 message Reply {

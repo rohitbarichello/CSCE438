@@ -31,11 +31,45 @@ using grpc::ServerReader;
 using grpc::ServerReaderWriter;
 using grpc::ServerWriter;
 using grpc::Status;
+using grpc::Channel;
+using grpc::ClientContext;
+using grpc::ClientReader;
+using grpc::ClientReaderWriter;
+using grpc::ClientWriter;
+using grpc::Status;
 
 std::string id;
 int oldFileSize_timeline = 0;
 int oldFileSize_followers = 0;
 std::unique_ptr<SNSService::Stub> sync_stub;
+std::unique_ptr<SNSService::Stub> coordinator_stub;
+std::string synchronizer_ip = "127.0.0.1";
+std::string synchronizer_port = "3090";
+
+
+void sendNewFollowers(std::string line) {
+    Request request;
+    Reply reply;
+    grpc::ClientContext context;
+
+    request.set_username(id);
+    request.set_filetype("followers");
+    request.set_data(line);
+
+    Status status = coordinator_stub->Ping(&context, request, &reply);
+}
+
+void sendNewTimeline(std::string line) {
+    Request request;
+    Reply reply;
+    grpc::ClientContext context;
+
+    request.set_username(id);
+    request.set_filetype("timeline");
+    request.set_data(line);
+
+    Status status = coordinator_stub->Ping(&context, request, &reply);
+}
 
 void checkTimeline() {
     // check size of file
@@ -43,11 +77,10 @@ void checkTimeline() {
     in_file.seekg(0, std::ios::end);
     int file_size = in_file.tellg();
 
-    if file_size
-        > oldFileSize {
-            oldFileSize_timeline = file_size;
-            sendNewTimeline();
-        }
+    if (file_size > oldFileSize_timeline) {
+        oldFileSize_timeline = file_size;
+        sendNewTimeline("");
+    }
 }
 
 void checkFollowers() {
@@ -56,35 +89,10 @@ void checkFollowers() {
     in_file.seekg(0, std::ios::end);
     int file_size = in_file.tellg();
 
-    if file_size
-        > oldFileSize {
-            oldFileSize_followers = file_size;
-            sendNewFollowers(line);
-        }
-}
-
-void sendNewFollowers(std::string line) {
-    Request request;
-    Reply reply;
-    ClientContext context;
-
-    request.set_username(id);
-    request.set_filetype("followers");
-    request.set_arguments(line)
-
-    Status status = coordinator_stub->Ping(&context, request, &reply);
-}
-
-void sendNewTimeline(std::string line) {
-    Request request;
-    Reply reply;
-    ClientContext context;
-
-    request.set_username(id);
-    request.set_filetype("timeline");
-    request.set_arguments(line)
-
-    Status status = coordinator_stub->Ping(&context, request, &reply);
+    if (file_size > oldFileSize_followers) {
+        oldFileSize_followers = file_size;
+        sendNewFollowers("");
+    }
 }
 
 std::thread timer_start(std::function<void(void)> func, unsigned int interval) {
@@ -102,14 +110,14 @@ void connectToSynchronizer() {
 
     sync_stub = std::unique_ptr<SNSService::Stub>(SNSService::NewStub(
         grpc::CreateChannel(
-            coordinator_connection_info, grpc::InsecureChannelCredentials())));
+            synchronizer_connection_info, grpc::InsecureChannelCredentials())));
 }
 
 class SNSServiceImpl final : public SNSService::Service {
     Status SendFileData(ServerContext* context, const Request* request, Reply* reply) override {
-        std::string line = request->arguments();
+        std::string line = request->data();
         std::string fileID = request->username();
-        std::string fileType = request->fileType();
+        std::string fileType = request->filetype();
 
         std::string filename = "";
 
@@ -120,15 +128,15 @@ class SNSServiceImpl final : public SNSService::Service {
             filename = fileID + "followers.txt";
         }
 
-        fstream newfile;
+        std::fstream newfile;
         newfile.open(filename, std::ios::out);  
         if (newfile.is_open())                 
             newfile << line;  
-        newfile.close();                       
-    }
+        newfile.close();       
 
-    return Status::OK;
-}
+        return Status::OK;                
+    }
+};
 
 
 void RunSynchronizer(std::string port_no) {

@@ -38,7 +38,7 @@ std::unordered_map<int, std::vector<int>> slaveTable;
 std::unordered_map<int, std::vector<int>> syncTable;
 
 // vector of threads that shut down their server if they don't hear from it every 10 seconds
-// std::vector<std::thread> serverTimers;
+std::vector<std::thread> serverTimers;
 
 
 std::string assignServer(int client_id) {
@@ -56,7 +56,7 @@ std::string assignServer(int client_id) {
 }
 
 // void serverDead(int server) {
-//     masterTable.at(server)[1] = 0;
+//     // masterTable.at(server)[1] = 0;
 
 //     std::cout<<"Server " << server  <<" is dead"<<std::endl;
 // }
